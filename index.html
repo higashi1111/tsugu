@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#15110E">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -10,7 +10,7 @@
 <title>継ぐ — 刀鍛冶の工程</title>
 <style>
 :root{--bg:#15110E;--card:#241C16;--line:#3E3227;--ink:#F0E7D8;--mute:#9C8D7A;--fire:#E2662A;--gold:#D9A441;--steel:#9FB3C8}
-*{box-sizing:border-box}
+*{box-sizing:border-box;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
   padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 8px);-webkit-text-size-adjust:100%}
 #app{max-width:560px;margin:0 auto;padding:10px 10px 90px}
@@ -106,6 +106,16 @@ var ST=[
  {name:"研ぎ",verb:"研ぐ",makes:"研ぎ上",rate:0.28,wname:"研師",wcost:350000,tname:"砥石一式",tcost:3500000,at:1600000,desc:"荒砥から仕上げまで。地鉄の景色が現れる。"},
  {name:"銘切り・拵え",verb:"銘を切る",makes:"一振り",rate:0.22,wname:"白銀師",wcost:3000000,tname:"鏨と漆",tcost:30000000,at:3800000,desc:"茎に銘を切り、鞘と柄を誂えて納める。"}
 ];
+var KUFU=[
+ {id:"ude",name:"工房の腕",desc:"すべての工程が1.25倍",base:5000,growth:6,rep:1},
+ {id:"te",name:"手際",desc:"手作業で流せる数が2倍",base:1500,growth:8,rep:1},
+ {id:"okiba",name:"置き場を広げる",desc:"各工程の置き場が+100",base:2500,growth:4,rep:1},
+ {id:"sumi",name:"炭焼き窯",desc:"たたらが3倍",base:30000,target:0},
+ {id:"mukou",name:"三人掛かりの向う槌",desc:"折り返し鍛錬が3倍",base:600000,target:2},
+ {id:"tsuchi",name:"秘伝の焼刃土",desc:"土置き・焼入れが3倍",base:9000000,target:4},
+ {id:"togiba",name:"研ぎ場を広げる",desc:"研ぎが3倍",base:80000000,target:5},
+ {id:"mise",name:"店を構える",desc:"納める刀の値が2倍",base:400000000}
+];
 var SHOP=[
  {id:"kazuuchi",name:"数打ち",cost:3,desc:"手作業で一度に流せる数が3倍"},
  {id:"bankonoko",name:"番子の子",cost:5,desc:"たたらの速さが2倍"},
@@ -114,7 +124,10 @@ var SHOP=[
  {id:"kuden",name:"口伝",cost:12,desc:"代替わり後、工程3まで開いた状態で始まる"},
  {id:"mekiki",name:"目利き",cost:18,desc:"弟子と道具の費えが20%やすい"},
  {id:"hiden",name:"秘伝の土置き",cost:30,desc:"納める刀の値が2倍"},
- {id:"kaiden",name:"皆伝",cost:60,desc:"代替わり後、工程5まで開き、各工程に弟子が3人"}
+ {id:"kaiden",name:"皆伝",cost:60,desc:"代替わり後、工程5まで開き、各工程に弟子が3人"},
+ {id:"takuwae",name:"開始の蓄え",cost:25,desc:"代替わりのたび、技の数×5000文 を持って始まる"},
+ {id:"kan",name:"代々の勘",cost:20,growth:2.2,rep:1,desc:"すべての工程が1.3倍（重ねて買えます）"},
+ {id:"hayawaza",name:"早業",cost:15,growth:2.5,rep:1,desc:"手作業が3倍（重ねて買えます）"}
 ];
 /* ===== 数値 ===== */
 var UN=[[1e20,"垓"],[1e16,"京"],[1e12,"兆"],[1e8,"億"],[1e4,"万"]];
@@ -126,31 +139,39 @@ function fmt(n){if(!isFinite(n))return"∞";if(!n||n<0)return"0";if(n<100)return
 function ftime(s){if(!isFinite(s)||s<=0)return"—";if(s<60)return Math.ceil(s)+"秒";if(s<3600)return Math.floor(s/60)+"分";
  if(s<86400)return(s/3600).toFixed(1)+"時間";return(s/86400).toFixed(1)+"日";}
 /* ===== 状態 ===== */
-function fresh(c){var s={zeni:0,total:0,hand:0,made:0,rate:0,buf:[],w:[],tool:[],open:1,waza:0,wazaTotal:0,shop:{},gens:0,
+function fresh(c){var s={zeni:0,total:0,hand:0,made:0,rate:0,buf:[],w:[],tool:[],open:1,waza:0,wazaTotal:0,shop:{},up:{},gens:0,
  bestTotal:0,lastBest:0,runStart:Date.now(),start:Date.now(),t:Date.now()};
  for(var i=0;i<ST.length;i++){s.buf.push(0);s.w.push(i===0?1:0);s.tool.push(0);}
  if(c)for(var k in c)s[k]=c[k];return s;}
 var S=fresh();
 function owns(id){return !!S.shop[id];}
-function speedMult(){return (1+0.08*S.wazaTotal)*(owns("aizuchi")?1.5:1);}
-function cap(i){return S.w[i]*ST[i].rate*Math.pow(TM,S.tool[i])*speedMult()*(i===0&&owns("bankonoko")?2:1);}
-function stageValue(i){return 3*Math.pow(VSTEP,i)*(owns("hiden")?2:1);}
+function lv(id){return S.up[id]||0;}
+function kufuCost(it){return it.rep?it.base*Math.pow(it.growth,lv(it.id)):it.base;}
+function wazaCost(it){return it.rep?Math.ceil(it.cost*Math.pow(it.growth,lv(it.id))):it.cost;}
+function bufcap(){return 100+100*lv("okiba");}
+function speedMult(){return (1+0.08*S.wazaTotal)*(owns("aizuchi")?1.5:1)*Math.pow(1.25,lv("ude"))*Math.pow(1.3,lv("kan"));}
+function stationBonus(i){var m=1;
+ if(i===0&&owns("bankonoko"))m*=2;
+ for(var k=0;k<KUFU.length;k++){var it=KUFU[k];if(it.target===i&&owns(it.id))m*=3;}
+ return m;}
+function cap(i){return S.w[i]*ST[i].rate*Math.pow(TM,S.tool[i])*speedMult()*stationBonus(i);}
+function stageValue(i){return 3*Math.pow(VSTEP,i)*(owns("hiden")?2:1)*(owns("mise")?2:1);}
 function swordValue(){return stageValue(S.open-1);}
 function disc(){return owns("mekiki")?0.8:1;}
 function wCost(i){return ST[i].wcost*Math.pow(WG,S.w[i])*disc();}
 function tCost(i){return ST[i].tcost*Math.pow(TG,S.tool[i])*disc();}
-function handPower(){return owns("kazuuchi")?15:5;}
+function handPower(){return (owns("kazuuchi")?15:5)*Math.pow(2,lv("te"))*Math.pow(3,lv("hayawaza"));}
 function thr(){var m=Infinity;for(var i=0;i<S.open;i++)m=Math.min(m,cap(i));return m===Infinity?0:m;}
 function bottleneck(){var bi=0,bc=Infinity;for(var i=0;i<S.open;i++){var c=cap(i);if(c<bc){bc=c;bi=i;}}return bi;}
-function wazaGain(){return S.total<1e6?0:Math.max(0,Math.floor(3*Math.pow(Math.log10(S.total)-5.3,1.5)));}
-function nextWazaAt(){return Math.pow(10,Math.pow((wazaGain()+1)/3,1/1.5)+5.3);}
+function wazaGain(){return S.total<1e6?0:Math.max(0,Math.floor(4*Math.pow(Math.log10(S.total)-5,1.6)));}
+function nextWazaAt(){return Math.pow(10,Math.pow((wazaGain()+1)/4,1/1.6)+5);}
 /* ===== 進行 ===== */
 function step(dt){
  for(var i=0;i<S.open;i++){var able=cap(i)*dt;var p=i===0?able:Math.min(able,S.buf[i-1]);
   if(i>0)S.buf[i-1]-=p;S.buf[i]+=p;}
  var done=S.buf[S.open-1];
  if(done>0){S.buf[S.open-1]=0;var m=done*swordValue();S.zeni+=m;S.total+=m;S.made+=done;}
- for(var j=0;j<S.open-1;j++){if(S.buf[j]>BUFCAP){var ex=S.buf[j]-BUFCAP;S.buf[j]=BUFCAP;var mm=ex*stageValue(j);S.zeni+=mm;S.total+=mm;}}
+ for(var j=0;j<S.open-1;j++){if(S.buf[j]>bufcap()){var ex=S.buf[j]-bufcap();S.buf[j]=bufcap();var mm=ex*stageValue(j);S.zeni+=mm;S.total+=mm;}}
  if(S.open<ST.length&&S.total>=ST[S.open].at){S.open++;S.w[S.open-1]=Math.max(S.w[S.open-1],1);
   toast("工程「"+ST[S.open-1].name+"」を開きました。通せば1本 "+fmt(swordValue())+"文。通らない分は半端物として売れます。");}
 }
@@ -170,7 +191,7 @@ function advance(){
 function save(){try{S.t=Date.now();localStorage.setItem(SAVE,JSON.stringify(S));}catch(e){}}
 function load(){try{var d=JSON.parse(localStorage.getItem(SAVE));if(!d)return;
  var s=fresh(d);for(var i=0;i<ST.length;i++){s.buf[i]=d.buf&&d.buf[i]||0;s.w[i]=(d.w&&d.w[i]!=null)?d.w[i]:(i===0?1:0);s.tool[i]=d.tool&&d.tool[i]||0;}
- s.shop=d.shop||{};S=s;var b=S.total;advance();if(S.total-b>1)toast("留守のあいだに "+fmt(S.total-b)+" 文になりました");}catch(e){}}
+ s.shop=d.shop||{};s.up=d.up||{};S=s;var b=S.total;advance();if(S.total-b>1)toast("留守のあいだに "+fmt(S.total-b)+" 文になりました");}catch(e){}}
 /* ===== 表示 ===== */
 var app=document.getElementById("app"),dock=document.getElementById("dock"),
  wrap=document.getElementById("wrap"),sheetEl=document.getElementById("sheet"),toastEl=document.getElementById("toasts");
@@ -208,29 +229,42 @@ function render(){
      '<button class="b'+(S.zeni>=tc?' ok':'')+'" data-act="tool" data-i="'+i+'"><b>'+ST[i].tname+' '+(S.tool[i]>0?'改'+S.tool[i]:'を買う')+'</b><em>'+fmt(tc)+'文 ×1.6</em></button>'+
      '</div></div></div><div class="desc">'+ST[i].desc+'</div>';
   if(i<S.open-1){h+='<div class="flow">▼ '+ST[i].makes+' を「'+ST[i+1].name+'」へ'+
-    (S.buf[i]>=BUFCAP?'<span class="over">置き場が一杯。あふれた分は 1つ '+fmt(stageValue(i))+'文 で売っています</span>':'')+'</div>';}
+    (S.buf[i]>=bufcap()?'<span class="over">置き場が一杯。あふれた分は 1つ '+fmt(stageValue(i))+'文 で売っています</span>':'')+'</div>';}
   else{h+='<div class="flow done">▼ ここが最後。納品して 1本 '+fmt(val)+'文</div>';}
   h+='</div>';
  }
  app.innerHTML=h;
  var g=wazaGain();
+ var kbuy=0;for(var q=0;q<KUFU.length;q++){var kk=KUFU[q];if(!kk.rep&&owns(kk.id))continue;if(S.zeni>=kufuCost(kk))kbuy++;}
  dock.innerHTML='<button class="dockb'+(g>0?' hot':'')+'" data-act="sheet" data-s="gen"'+(g<1?' disabled':'')+'>代を譲る<b>'+(g>0?'技+'+g:'累計100万文から')+'</b></button>'+
+  '<button class="dockb'+(kbuy>0?' hot':'')+'" data-act="sheet" data-s="kufu">工夫<b>'+(kbuy>0?kbuy+'つ買える':'今代の強化')+'</b></button>'+
   '<button class="dockb" data-act="sheet" data-s="waza">技 '+S.waza+'</button>'+
   '<button class="dockb" data-act="sheet" data-s="kiroku">記録</button>';
  if(sheet)renderSheet();
 }
 function renderSheet(){
- var h='<div class="shead"><b>'+(sheet==="gen"?"代を譲る":sheet==="waza"?"技":"記録")+'</b><button class="close" data-act="closesheet">閉じる</button></div>';
+ var h='<div class="shead"><b>'+(sheet==="gen"?"代を譲る":sheet==="kufu"?"工夫":sheet==="waza"?"技":"記録")+'</b><button class="close" data-act="closesheet">閉じる</button></div>';
  if(sheet==="gen"){var g=wazaGain();
   h+='<p class="p">工房も弟子も道具も手放し、次の代に技だけを渡します。<br>・いま譲れば <b>技 +'+g+'</b>（累計 '+(S.wazaTotal+g)+'）<br>'+
      '・工程の速さ <b>×'+speedMult().toFixed(2)+' → ×'+((1+0.08*(S.wazaTotal+g))*(owns("aizuchi")?1.5:1)).toFixed(2)+'</b><br>'+
      '・次代は工程 <b>'+(owns("kaiden")?5:owns("kuden")?3:1)+'</b> まで開いた状態で始まります</p>'+
      '<button class="big" data-act="succeed">'+(S.gens+2)+'代目に譲る</button>';
+ } else if(sheet==="kufu"){
+  h+='<p class="p">文で買う、今代かぎりの強化です。代替わりで失われます。<br>いまの持ち文 <b>'+fmt(Math.floor(S.zeni))+'</b></p>';
+  for(var i=0;i<KUFU.length;i++){var it=KUFU[i];
+   var got=!it.rep&&owns(it.id), c=kufuCost(it), can=!got&&S.zeni>=c;
+   var name=it.name+(it.rep&&lv(it.id)>0?' '+(lv(it.id)+1)+'段目':'');
+   h+='<button class="item'+(can?' can':'')+(got?' got':'')+'" data-act="kufu" data-id="'+it.id+'"'+(can?'':' disabled')+'>'+
+      '<span class="iname">'+name+'</span><span class="icost">'+(got?'導入済み':fmt(c)+'文')+'</span>'+
+      '<span class="idesc">'+it.desc+(it.rep&&lv(it.id)>0?'（いま '+(it.id==="okiba"?'+'+lv(it.id)*100:'×'+(it.id==="ude"?Math.pow(1.25,lv(it.id)).toFixed(2):it.id==="te"?Math.pow(2,lv(it.id)):lv(it.id)))+'）':'')+'</span></button>';}
  } else if(sheet==="waza"){
   h+='<p class="p">技 '+S.waza+'（累計 '+S.wazaTotal+'・1つにつき全工程 +8%）。技で買うものは代替わりでも残ります。</p>';
-  for(var i=0;i<SHOP.length;i++){var it=SHOP[i],got=owns(it.id),can=!got&&S.waza>=it.cost;
+  for(var i=0;i<SHOP.length;i++){var it=SHOP[i];
+   var got=!it.rep&&owns(it.id), c=wazaCost(it), can=!got&&S.waza>=c;
+   var name=it.name+(it.rep&&lv(it.id)>0?' '+(lv(it.id)+1)+'段目':'');
    h+='<button class="item'+(can?' can':'')+(got?' got':'')+'" data-act="shop" data-id="'+it.id+'"'+(can?'':' disabled')+'>'+
-      '<span class="iname">'+it.name+'</span><span class="icost">'+(got?'会得':'技 '+it.cost)+'</span><span class="idesc">'+it.desc+'</span></button>';}
+      '<span class="iname">'+name+'</span><span class="icost">'+(got?'会得':'技 '+c)+'</span>'+
+      '<span class="idesc">'+it.desc+(it.rep&&lv(it.id)>0?'（いま '+(it.id==="kan"?'×'+Math.pow(1.3,lv(it.id)).toFixed(2):'×'+Math.pow(3,lv(it.id)))+'）':'')+'</span></button>';}
  } else {
   h+='<dl><div><dt>今代の稼ぎ</dt><dd>'+fmt(S.total)+'文</dd></div>'+
      '<div><dt>前代の稼ぎ</dt><dd>'+(S.bestTotal?fmt(S.bestTotal)+'文':'—')+'</dd></div>'+
@@ -260,12 +294,24 @@ document.addEventListener("click",function(ev){
  else if(a==="sheet"){sheet=el.getAttribute("data-s");wrap.classList.add("on");}
  else if(a==="closesheet"){sheet=null;wrap.classList.remove("on");}
  else if(a==="shop"){var id=el.getAttribute("data-id");for(var k=0;k<SHOP.length;k++){var it=SHOP[k];
-   if(it.id===id&&!owns(id)&&S.waza>=it.cost){S.waza-=it.cost;S.shop[id]=1;toast("「"+it.name+"」を会得した");save();}}}
+   if(it.id!==id)continue;var c=wazaCost(it);
+   if(it.rep){if(S.waza>=c){S.waza-=c;S.up[id]=lv(id)+1;toast("「"+it.name+"」"+lv(id)+"段目");save();}}
+   else if(!owns(id)&&S.waza>=c){S.waza-=c;S.shop[id]=1;toast("「"+it.name+"」を会得した");save();}}}
+ else if(a==="kufu"){var kid=el.getAttribute("data-id");for(var k2=0;k2<KUFU.length;k2++){var it2=KUFU[k2];
+   if(it2.id!==kid)continue;var c2=kufuCost(it2);
+   if(it2.rep){if(S.zeni>=c2){S.zeni-=c2;S.up[kid]=lv(kid)+1;toast("「"+it2.name+"」を整えた");save();}}
+   else if(!owns(kid)&&S.zeni>=c2){S.zeni-=c2;S.shop[kid]=1;toast("「"+it2.name+"」を整えた");save();}}}
  else if(a==="succeed"){var g=wazaGain();if(g>=1){
    var keep={waza:S.waza+g,wazaTotal:S.wazaTotal+g,shop:S.shop,gens:S.gens+1,start:S.start,
     bestTotal:Math.max(S.bestTotal,S.total),lastBest:Math.max(S.bestTotal,S.total),runStart:Date.now()};
-   var head=owns("kaiden")?5:owns("kuden")?3:1;var prevShop=S.shop;S=fresh(keep);S.open=head;
-   for(var q=0;q<head;q++)S.w[q]=prevShop.kaiden?3:1;
+   var head=owns("kaiden")?5:owns("kuden")?3:1;var prevShop=S.shop,prevUp=S.up;
+   var keepShop={},keepUp={};
+   for(var kk in prevShop){var isKufu=false;for(var z=0;z<KUFU.length;z++)if(KUFU[z].id===kk)isKufu=true;if(!isKufu)keepShop[kk]=1;}
+   for(var uu in prevUp){var isK2=false;for(var z2=0;z2<KUFU.length;z2++)if(KUFU[z2].id===uu)isK2=true;if(!isK2)keepUp[uu]=prevUp[uu];}
+   keep.shop=keepShop;keep.up=keepUp;
+   S=fresh(keep);S.open=head;
+   for(var q=0;q<head;q++)S.w[q]=keepShop.kaiden?3:1;
+   if(keepShop.takuwae)S.zeni=5000*S.wazaTotal;
    sheet=null;wrap.classList.remove("on");toast((S.gens+1)+"代目が継ぎました。技 +"+g);save();}}
  else if(a==="save"){save();toast("保存しました");}
  else if(a==="wipe"){if(confirm("すべて消して初代からやり直しますか？")){S=fresh();save();sheet=null;wrap.classList.remove("on");}}
